@@ -94,3 +94,36 @@ test('pictures are resized to the exact pixels of their box when the terminal re
   expect(ph! % 20).toBe(0)
   await ui.unmount()
 })
+
+test('⤢ enlarges a picture to the whole chat width, ⤡ shrinks it back, ↗ opens the source', async ($, on) => {
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='
+  const ran: string[][] = []
+  on('process.run', (_$, e) => {
+    ran.push([...e.argv])
+    const out = e.argv[0] === 'realpath' ? '/abs/small.png\n' : e.argv[1] === 'identify' ? '400 300' : ''
+    return { value: { exitCode: 0, stdout: out, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('clock.now', () => ({ value: 0 }))
+  on('fs.read', () => ({ value: { base64: PNG } }))
+  on('env.get', (_$, e) => ({ value: e.name === 'GLANCE_MODE' ? 'image' : undefined }))
+  on('ui.render', ($, e) => { const { Text } = $.ui.resolve(e); return <Text>row</Text> })
+
+  const res = await $.command.run({
+    command: 'glance', args: 'small.png', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 },
+  })
+  const ui = await $.ui.mount({ plugin: 'glance', surface: 'terminal', component: 'CommandOutput',
+    viewport: { columns: 120, rows: 50 },
+    props: { command: 'glance', args: 'small.png', text: res.text ?? '', isErrored: false } })
+  const width = async () => Number(JSON.stringify(await ui.find({ type: 'Image' })).match(/"columns":(\d+)/)?.[1])
+
+  const compact = await width()
+  expect(compact).toBeLessThan(40) // 400px / 12 ≈ 33 columns
+  await ui.press({ key: 'zoom1' })
+  expect(await width()).toBeGreaterThan(108) // the whole chat width, less row rounding
+  await ui.press({ key: 'zoom1' })
+  expect(await width()).toBe(compact)
+
+  await ui.press({ key: 'open1' })
+  expect(ran.some(a => a.join(' ') === 'setsid -f xdg-open /abs/small.png')).toBe(true)
+  await ui.unmount()
+})

@@ -30,6 +30,7 @@ O **glance** fecha esse ciclo. Assim que o Claude escreve ou edita um `.html`, u
 - **`/glance` em qualquer coisa** — `/glance mockup.png pagina.html grafico.svg` mostra qualquer arquivo na hora.
 - **Galeria inteligente** — várias imagens lado a lado em linhas justificadas, mesma altura, com legenda.
 - **Tamanho certo** — tamanho real, nunca ampliado; metade da largura em tela cheia, largura toda com a tela dividida.
+- **Clique pra ampliar ou abrir** — `⤢` aumenta a imagem pra largura toda do chat (`⤡` volta), `↗` abre no visualizador de imagem ou no navegador.
 - **Perfeito no pixel** — a imagem é redimensionada (Lanczos) pro tamanho exato da caixa em pixels, então texto pequeno continua legível.
 - **Recorte justo** — o espaço vazio embaixo de páginas curtas é cortado.
 - **Funciona em todo terminal** — pixels de verdade em terminais com protocolo kitty, arte em blocos coloridos nos outros.
@@ -65,6 +66,8 @@ Adicione a pasta em `CLAUDE_CODE_PLUGIN_DIRS` no bloco `env` do `~/.claude/setti
 | O Claude edita a página | a nova versão embaixo da linha do `Edit` |
 | O Claude lê um print ou imagem | a imagem embaixo da linha do `Read` |
 | `/glance a.png b.html c.jpg` | todas, lado a lado |
+| clica em `⤢` / `⤡` embaixo da imagem | ela ocupa a largura toda do chat / volta |
+| clica em `↗` embaixo da imagem | o arquivo abre no app padrão (visualizador, navegador) |
 
 **Dica — faça o Claude te *mostrar* as coisas.** Coloque isto no `~/.claude/CLAUDE.md`:
 

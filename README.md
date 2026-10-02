@@ -30,6 +30,7 @@ Claude writes a landing page, a dashboard, a chart, an email template… and you
 - **`/glance` anything** — `/glance mockup.png page.html chart.svg` shows any files on demand.
 - **Smart gallery** — several images sit side by side in justified rows, same height, captioned.
 - **Right-sized** — natural size, never blown up; half the chat width on a wide screen, full width on a split pane.
+- **Click to zoom or open** — `⤢` blows a picture up to the whole chat width (`⤡` shrinks it back), `↗` opens it in your image viewer or browser.
 - **Pixel-perfect** — pictures are resized (Lanczos) to the exact pixels of their box, so small text stays readable.
 - **Tight crops** — the empty space under short pages is trimmed away.
 - **Works everywhere** — real pixels on kitty-protocol terminals, a colour block-art fallback on the rest.
@@ -65,6 +66,8 @@ Add the folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/set
 | Claude edits the page | the updated render under the `Edit` row |
 | Claude reads a screenshot or image | the picture under the `Read` row |
 | `/glance a.png b.html c.jpg` | all of them, side by side |
+| click `⤢` / `⤡` under a picture | it grows to the whole chat width / goes back |
+| click `↗` under a picture | the file opens in your default app (viewer, browser) |
 
 **Tip — make Claude *show* you things.** Add this to `~/.claude/CLAUDE.md`:
 

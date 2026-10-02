@@ -16,6 +16,8 @@ const BROWSERS = ['chromium', 'google-chrome-stable', 'google-chrome']
 
 const shots = atom({ plugin: 'glance', key: 'shots' } as const, {})
 const generation = atom({ plugin: 'glance', key: 'generation' } as const, 0)
+// pictures the person enlarged, by generation
+const expanded = atom({ plugin: 'glance', key: 'expanded' } as const, {})
 
 // GLANCE_MODE=image|cells overrides; else kitty-protocol terminals get real pixels
 async function wantsImage($: EngineInterface) {
@@ -189,9 +191,19 @@ const WIDE = 160 // chat columns from which pictures stop at half the width
 
 type ResolveArg = Parameters<EngineInterface['ui']['resolve']>[0]
 
-async function tile($: EngineInterface, e: ResolveArg, s: Shot, cols: number, rows: number, caption: boolean, cell: Cell | undefined) {
+async function toggleSize($: EngineInterface, s: Shot) {
+  await update($, expanded, all => ({ ...all, [String(s.generation)]: !all[String(s.generation)] }))
+}
+
+// the source itself in the desktop's default app: images in the viewer, pages in the browser
+async function openOutside($: EngineInterface, s: Shot) {
+  const r = await $.process.run(['setsid', '-f', 'xdg-open', s.file])
+  if (r.exitCode) $.ui.toast(`glance: could not open ${s.file}`)
+}
+
+async function tile($: EngineInterface, e: ResolveArg, s: Shot, cols: number, rows: number, isBig: boolean, cell: Cell | undefined) {
   if (e.surface !== 'terminal') return null
-  const { Box, Text, Image, Raster } = $.ui.resolve(e)
+  const { Box, Button, Text, Image, Raster } = $.ui.resolve(e)
   const name = s.file.split('/').pop() ?? s.file
   if (s.error) return <Text color="red">glance: {s.error}</Text>
   let pic
@@ -205,13 +217,18 @@ async function tile($: EngineInterface, e: ResolveArg, s: Shot, cols: number, ro
   return (
     <Box flexDirection="column" width={cols}>
       {pic}
-      {caption && <Text dimColor wrap="truncate-end">{name}</Text>}
+      <Box flexDirection="row" columnGap={1}>
+        <Box flexShrink={1}><Text dimColor wrap="truncate-end">{name}</Text></Box>
+        <Button key={`zoom${s.generation}`} plain dimColor label={isBig ? '⤡' : '⤢'} onPress={() => toggleSize($, s)} />
+        <Button key={`open${s.generation}`} plain dimColor label="↗" onPress={() => openOutside($, s)} />
+      </Box>
     </Box>
   )
 }
 
 // justified rows: as many images per row as fit at MIN_TILE columns, all of a row one height,
-// that height filling the width but never past any image's natural size (px / cellPx: no upscale)
+// that height filling the width but never past any image's natural size (px / cellPx: no upscale);
+// an enlarged picture (⤢) takes a row of its own at the whole chat width
 async function gallery($: EngineInterface, e: ResolveArg, list: Shot[], width: number) {
   const { Box, Text } = $.ui.resolve(e)
   if (e.surface !== 'terminal') return <Text dimColor>Pictures draw in the terminal only.</Text>
@@ -224,8 +241,25 @@ async function gallery($: EngineInterface, e: ResolveArg, list: Shot[], width: n
   const ok = list.filter(s => !s.error)
   const rows = []
   for (const s of list.filter(s => s.error)) rows.push(await tile($, e, s, 1, 1, false, cell))
-  for (let i = 0; i < ok.length; i += perRow) {
-    const row = ok.slice(i, i + perRow)
+  const big = await read($, expanded)
+  const full = Math.max(1, Math.min(255, width - 4))
+  // runs of compact pictures between the enlarged ones, each enlarged one a row of its own
+  const groups: Shot[][] = []
+  for (const s of ok) {
+    const last = groups[groups.length - 1]
+    if (big[String(s.generation)]) groups.push([s])
+    else if (last && !big[String(last[0]!.generation)] && last.length < perRow) last.push(s)
+    else groups.push([s])
+  }
+  for (const row of groups) {
+    if (big[String(row[0]!.generation)]) {
+      const s = row[0]!
+      const a = s.w / s.h
+      const height = Math.max(1, Math.min(255, Math.floor(full / (ratio * a))))
+      const cols = Math.max(1, Math.min(full, Math.round(ratio * a * height)))
+      rows.push(await tile($, e, s, cols, height, true, cell))
+      continue
+    }
     // an image `a = w/h` wide is ratio * a * rows columns
     const aspect = row.map(s => s.w / s.h)
     const fill = (avail - GAP * (row.length - 1)) / (ratio * aspect.reduce((x, y) => x + y, 0))
@@ -234,7 +268,7 @@ async function gallery($: EngineInterface, e: ResolveArg, list: Shot[], width: n
     const tiles = []
     for (const [k, s] of row.entries()) {
       const cols = Math.max(1, Math.min(avail, Math.round(ratio * aspect[k]! * height)))
-      tiles.push(await tile($, e, s, cols, height, list.length > 1, cell))
+      tiles.push(await tile($, e, s, cols, height, false, cell))
     }
     rows.push(<Box flexDirection="row" gap={GAP} alignItems="flex-start">{tiles}</Box>)
   }

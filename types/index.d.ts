@@ -3,6 +3,6 @@ export type Shot = { file: string; img: string; w: number; h: number; generation
 
 declare module 'claude-code' {
   interface PluginState {
-    'glance': { shots: Record<string, Shot>; generation: number }
+    'glance': { shots: Record<string, Shot>; generation: number; expanded: Record<string, boolean> }
   }
 }
