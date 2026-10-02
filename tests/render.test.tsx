@@ -8,6 +8,7 @@ test('/glance draws the page inline under the command row', async ($, on) => {
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='
+  on('clock.now', () => ({ value: 0 }))
   on('fs.read', (_$, e) => ({
     value: { base64: e.path.endsWith('.png') ? PNG : new Uint8Array(512 * 512 * 3).fill(200).toBase64() },
   }))
@@ -43,6 +44,7 @@ test('/glance with several files lays them out side by side', async ($, on) => {
     const out = e.argv[0] === 'realpath' ? `/abs/${e.argv[2]}\n` : e.argv[1] === 'identify' ? '800 600' : ''
     return { value: { exitCode: 0, stdout: out, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
+  on('clock.now', () => ({ value: 0 }))
   on('fs.read', () => ({ value: { base64: PNG } }))
   on('env.get', (_$, e) => ({ value: e.name === 'GLANCE_MODE' ? 'image' : undefined }))
   on('ui.render', ($, e) => { const { Text } = $.ui.resolve(e); return <Text>row</Text> })
@@ -58,5 +60,37 @@ test('/glance with several files lays them out side by side', async ($, on) => {
     props: { command: 'glance', args, text: res.text ?? '', isErrored: false } })
   expect((await ui.findAll({ type: 'Image' })).length).toBe(3)
   expect(await ui.find({ type: 'Text', text: 'b.png' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('pictures are resized to the exact pixels of their box when the terminal reports its cell size', async ($, on) => {
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='
+  const ran: string[][] = []
+  on('process.run', (_$, e) => {
+    ran.push([...e.argv])
+    const out = e.argv[0] === 'python3' ? '200 50 1800 1000\n' // 9x20 px cells
+      : e.argv[0] === 'realpath' ? '/abs/shot.png\n' : e.argv[1] === 'identify' ? '1440 900' : ''
+    return { value: { exitCode: 0, stdout: out, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('clock.now', () => ({ value: 0 }))
+  on('fs.read', () => ({ value: { base64: PNG } }))
+  on('env.get', (_$, e) => ({ value: e.name === 'GLANCE_MODE' ? 'image' : undefined }))
+  on('ui.render', ($, e) => { const { Text } = $.ui.resolve(e); return <Text>row</Text> })
+
+  const res = await $.command.run({
+    command: 'glance', args: 'shot.png', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 },
+  })
+  const ui = await $.ui.mount({ plugin: 'glance', surface: 'terminal', component: 'CommandOutput',
+    viewport: { columns: 120, rows: 50 },
+    props: { command: 'glance', args: 'shot.png', text: res.text ?? '', isErrored: false } })
+  const image = await ui.find({ type: 'Image' })
+  expect(image).toBeDefined()
+  // 1440px / 12px per column = 120 cols, capped at 116; ratio 20/9 -> rows = 116 * (900/1440) / 2.22
+  const resize = ran.find(a => a[0] === 'magick' && a.includes('Lanczos'))
+  expect(resize).toBeDefined()
+  const box = resize![resize!.indexOf('-resize') + 1]!
+  const [pw, ph] = box.split('x').map(Number)
+  expect(pw! % 9).toBe(0)
+  expect(ph! % 20).toBe(0)
   await ui.unmount()
 })

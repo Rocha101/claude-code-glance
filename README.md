@@ -30,6 +30,7 @@ Claude writes a landing page, a dashboard, a chart, an email template… and you
 - **`/glance` anything** — `/glance mockup.png page.html chart.svg` shows any files on demand.
 - **Smart gallery** — several images sit side by side in justified rows, same height, captioned.
 - **Right-sized** — natural size, never blown up; half the chat width on a wide screen, full width on a split pane.
+- **Pixel-perfect** — pictures are resized (Lanczos) to the exact pixels of their box, so small text stays readable.
 - **Tight crops** — the empty space under short pages is trimmed away.
 - **Works everywhere** — real pixels on kitty-protocol terminals, a colour block-art fallback on the rest.
 
@@ -54,7 +55,7 @@ Add the folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/set
 
 </details>
 
-**Requirements:** Claude Code 2.1.287+ (mods), `chromium` or `google-chrome`, ImageMagick (`magick`), `jq`, `git`.
+**Requirements:** Claude Code 2.1.287+ (mods), `chromium` or `google-chrome`, ImageMagick (`magick`), `jq`, `git`. Optional: `python3`, to read the terminal's exact cell size for pixel-perfect pictures.
 
 ## Usage
 
@@ -89,7 +90,7 @@ Set these in the `env` block of `~/.claude/settings.json`:
 |---|---|---|
 | `GLANCE_MODE` | auto | `image` forces real pixels, `cells` forces block art |
 | `GLANCE_CELL_PX` | `12` | image pixels per terminal column — higher = smaller pictures |
-| `GLANCE_CELL_RATIO` | `2.25` | cell height ÷ width of your font, keeps pictures undistorted |
+| `GLANCE_CELL_RATIO` | auto | cell height ÷ width; read from the terminal, `2.25` when it doesn't report pixels |
 | `CLAUDE_CODE_FORCE_TERMINAL_IMAGES` | — | `1` makes Claude Code send images where it can't detect support (multiplexers) |
 
 ## How it works
@@ -97,7 +98,7 @@ Set these in the `env` block of `~/.claude/settings.json`:
 A Claude Code **mod** (a hooks module, `hooks/register.tsx`):
 
 1. `tool.call` — after a `Write`/`Edit` of HTML or a `Read` of an image, it renders: HTML through headless Chromium at 1280×900, cropped to the content; images normalised with ImageMagick.
-2. `ui.render` on `ToolResult`, `ToolGroup` and `CommandOutput` — it draws the picture under the row, as an `Image` (kitty protocol) or a `Raster` of quadrant blocks.
+2. `ui.render` on `ToolResult`, `ToolGroup` and `CommandOutput` — it draws the picture under the row, as an `Image` (kitty protocol, pre-resized to the box's exact pixels from the pty's cell size) or a `Raster` of quadrant blocks.
 3. A justified layout packs several pictures into rows that fit the chat.
 
 ## Limits

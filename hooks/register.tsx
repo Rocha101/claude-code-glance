@@ -8,7 +8,7 @@ const H = 900
 const PAD = 48 // px kept below the last content
 // image px per terminal column; ~8px cells are typical, so 12 draws at ~0.7x. GLANCE_CELL_PX tunes it
 const CELL_PX = 12
-// terminal cell height / width; ~2.25 for most monospace fonts (7x16, 8x18). GLANCE_CELL_RATIO tunes it
+// terminal cell height / width when the terminal doesn't report its pixels; GLANCE_CELL_RATIO overrides
 const CELL_RATIO = 2.25
 const HTML = /\.html?$/i
 const IMG = /\.(png|jpe?g|gif|webp|bmp|svg)$/i
@@ -131,20 +131,72 @@ async function toCells($: EngineInterface, s: Shot, cols: number, rows: number) 
   return cells
 }
 
+// the terminal's cell size in pixels, from Claude Code's own pty (TIOCGWINSZ); undefined where
+// the terminal doesn't report pixels. Cached briefly: a resize shows up within a few seconds
+const PTY_PROBE = `
+import fcntl, os, struct, termios
+p = os.getppid()
+for n in (0, 1, 2):
+    try:
+        t = os.readlink(f"/proc/{p}/fd/{n}")
+        if t.startswith("/dev/pts") or t.startswith("/dev/tty"):
+            f = os.open(t, os.O_RDONLY | os.O_NOCTTY)
+            r, c, x, y = struct.unpack("HHHH", fcntl.ioctl(f, termios.TIOCGWINSZ, bytes(8)))
+            print(c, r, x, y)
+            break
+    except Exception:
+        pass
+`
+type Cell = { w: number; h: number }
+let ptyCell: { at: number; cell: Cell | undefined } | undefined
+
+async function cellSize($: EngineInterface): Promise<Cell | undefined> {
+  const now = await $.clock.now()
+  if (ptyCell && now - ptyCell.at < 5000) return ptyCell.cell
+  let cell: Cell | undefined
+  try {
+    const r = await $.process.run(['python3', '-c', PTY_PROBE], { timeoutMs: 3000 })
+    const [c, rows, x, y] = r.stdout.trim().split(' ').map(Number)
+    if (c && rows && x && y) cell = { w: x / c, h: y / rows }
+  } catch {
+    // no python3: fall back to the estimates
+  }
+  ptyCell = { at: now, cell }
+  return cell
+}
+
+// the picture resized to exactly the box's pixels (Lanczos + light sharpening), so the terminal
+// draws it 1:1 instead of scaling it with its own softer filter
+const fitCache = new Map<string, string>()
+
+async function fitted($: EngineInterface, s: Shot, cols: number, rows: number, cell: Cell | undefined) {
+  if (!cell) return s.img
+  const w = Math.round(cols * cell.w)
+  const h = Math.round(rows * cell.h)
+  const key = `${s.generation}:${w}x${h}`
+  const hit = fitCache.get(key)
+  if (hit) return hit
+  const out = `/dev/shm/claude-glance-${s.generation}-${w}x${h}.png`
+  const r = await $.process.run(['magick', `${s.img}[0]`, '-filter', 'Lanczos', '-resize', `${w}x${h}`, '-unsharp', '0x0.6+0.6+0', out])
+  const img = r.exitCode ? s.img : out
+  fitCache.set(key, img)
+  return img
+}
+
 const GAP = 2 // columns between images in a row
 const MIN_TILE = 36 // columns an image gets at least before the row wraps
 const WIDE = 160 // chat columns from which pictures stop at half the width
 
 type ResolveArg = Parameters<EngineInterface['ui']['resolve']>[0]
 
-async function tile($: EngineInterface, e: ResolveArg, s: Shot, cols: number, rows: number, caption: boolean) {
+async function tile($: EngineInterface, e: ResolveArg, s: Shot, cols: number, rows: number, caption: boolean, cell: Cell | undefined) {
   if (e.surface !== 'terminal') return null
   const { Box, Text, Image, Raster } = $.ui.resolve(e)
   const name = s.file.split('/').pop() ?? s.file
   if (s.error) return <Text color="red">glance: {s.error}</Text>
   let pic
   if (await wantsImage($)) {
-    const { base64 } = await $.fs.read(s.img, { as: 'bytes' })
+    const { base64 } = await $.fs.read(await fitted($, s, cols, rows, cell), { as: 'bytes' })
     pic = <Image source={{ png: base64 }} columns={cols} rows={rows} alt={s.file} />
   } else {
     const cells = await toCells($, s, cols, rows)
@@ -165,12 +217,13 @@ async function gallery($: EngineInterface, e: ResolveArg, list: Shot[], width: n
   if (e.surface !== 'terminal') return <Text dimColor>Pictures draw in the terminal only.</Text>
   // wide chat (one pane, full screen): at most half of it; split chat: the whole width
   const avail = Math.max(1, Math.min(255, width >= WIDE ? Math.floor(width / 2) : width - 4))
-  const ratio = Number(await $.env.get('GLANCE_CELL_RATIO')) || CELL_RATIO
+  const cell = await cellSize($)
+  const ratio = Number(await $.env.get('GLANCE_CELL_RATIO')) || (cell ? cell.h / cell.w : CELL_RATIO)
   const cellPx = Number(await $.env.get('GLANCE_CELL_PX')) || CELL_PX
   const perRow = Math.max(1, Math.min(list.length, Math.floor((avail + GAP) / (MIN_TILE + GAP))))
   const ok = list.filter(s => !s.error)
   const rows = []
-  for (const s of list.filter(s => s.error)) rows.push(await tile($, e, s, 1, 1, false))
+  for (const s of list.filter(s => s.error)) rows.push(await tile($, e, s, 1, 1, false, cell))
   for (let i = 0; i < ok.length; i += perRow) {
     const row = ok.slice(i, i + perRow)
     // an image `a = w/h` wide is ratio * a * rows columns
@@ -181,7 +234,7 @@ async function gallery($: EngineInterface, e: ResolveArg, list: Shot[], width: n
     const tiles = []
     for (const [k, s] of row.entries()) {
       const cols = Math.max(1, Math.min(avail, Math.round(ratio * aspect[k]! * height)))
-      tiles.push(await tile($, e, s, cols, height, list.length > 1))
+      tiles.push(await tile($, e, s, cols, height, list.length > 1, cell))
     }
     rows.push(<Box flexDirection="row" gap={GAP} alignItems="flex-start">{tiles}</Box>)
   }

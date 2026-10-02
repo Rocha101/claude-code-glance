@@ -30,6 +30,7 @@ O **glance** fecha esse ciclo. Assim que o Claude escreve ou edita um `.html`, u
 - **`/glance` em qualquer coisa** — `/glance mockup.png pagina.html grafico.svg` mostra qualquer arquivo na hora.
 - **Galeria inteligente** — várias imagens lado a lado em linhas justificadas, mesma altura, com legenda.
 - **Tamanho certo** — tamanho real, nunca ampliado; metade da largura em tela cheia, largura toda com a tela dividida.
+- **Perfeito no pixel** — a imagem é redimensionada (Lanczos) pro tamanho exato da caixa em pixels, então texto pequeno continua legível.
 - **Recorte justo** — o espaço vazio embaixo de páginas curtas é cortado.
 - **Funciona em todo terminal** — pixels de verdade em terminais com protocolo kitty, arte em blocos coloridos nos outros.
 
@@ -54,7 +55,7 @@ Adicione a pasta em `CLAUDE_CODE_PLUGIN_DIRS` no bloco `env` do `~/.claude/setti
 
 </details>
 
-**Requisitos:** Claude Code 2.1.287+ (mods), `chromium` ou `google-chrome`, ImageMagick (`magick`), `jq`, `git`.
+**Requisitos:** Claude Code 2.1.287+ (mods), `chromium` ou `google-chrome`, ImageMagick (`magick`), `jq`, `git`. Opcional: `python3`, pra ler o tamanho exato da célula do terminal e deixar a imagem perfeita no pixel.
 
 ## Uso
 
@@ -89,7 +90,7 @@ No bloco `env` do `~/.claude/settings.json`:
 |---|---|---|
 | `GLANCE_MODE` | auto | `image` força pixels de verdade, `cells` força arte em blocos |
 | `GLANCE_CELL_PX` | `12` | pixels da imagem por coluna do terminal — maior = imagem menor |
-| `GLANCE_CELL_RATIO` | `2.25` | altura ÷ largura da célula da sua fonte, mantém a imagem sem distorção |
+| `GLANCE_CELL_RATIO` | auto | altura ÷ largura da célula; lido do terminal, `2.25` quando ele não informa os pixels |
 | `CLAUDE_CODE_FORCE_TERMINAL_IMAGES` | — | `1` faz o Claude Code mandar imagem onde ele não detecta suporte (multiplexadores) |
 
 ## Como funciona
@@ -97,7 +98,7 @@ No bloco `env` do `~/.claude/settings.json`:
 Um **mod** do Claude Code (um módulo de hooks, `hooks/register.tsx`):
 
 1. `tool.call` — depois de um `Write`/`Edit` de HTML ou de um `Read` de imagem, renderiza: HTML num Chromium headless em 1280×900, recortado no conteúdo; imagens normalizadas com o ImageMagick.
-2. `ui.render` em `ToolResult`, `ToolGroup` e `CommandOutput` — desenha a imagem embaixo da linha, como `Image` (protocolo kitty) ou `Raster` de blocos.
+2. `ui.render` em `ToolResult`, `ToolGroup` e `CommandOutput` — desenha a imagem embaixo da linha, como `Image` (protocolo kitty, já redimensionada pros pixels exatos da caixa a partir do tamanho da célula do pty) ou `Raster` de blocos.
 3. Um layout justificado distribui várias imagens em linhas que cabem no chat.
 
 ## Limites
