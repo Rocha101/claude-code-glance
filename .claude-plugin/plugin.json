@@ -1,0 +1,12 @@
+{
+  "name": "glance",
+  "version": "0.1.0",
+  "description": "See images, screenshots and HTML pages inline in the Claude Code chat",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Rocha101",
+    "url": "https://github.com/Rocha101"
+  },
+  "homepage": "https://github.com/Rocha101/claude-code-glance",
+  "license": "MIT"
+}
